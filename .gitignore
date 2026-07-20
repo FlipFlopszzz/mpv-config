@@ -1,0 +1,9 @@
+# mpv runtime data
+watch_later/
+cache/
+state/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+*.swp
