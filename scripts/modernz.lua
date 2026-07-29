@@ -610,6 +610,7 @@ local state = {
     playlist_pos_1 = 0,
     pause = false,
     volume = 0,
+    last_nonzero_volume = nil,
     mute = false,
     osd_dimensions = {w = 0, h = 0, aspect = 0},
     osd_scale_by_window = false,
@@ -1593,7 +1594,7 @@ local function render_elements(master_ass, osc_vis, wc_vis)
         local elem_ass = assdraw.ass_new()
 
         -- Hover background box
-        if element.type == "button" and hover_effects.box
+        if element.type == "button" and hover_effects.box and not element.no_hover_box
             and element.name ~= "title"
             and element.name ~= "chapter_title"
             and element.name ~= "time_codes"
@@ -1818,7 +1819,7 @@ local function render_elements(master_ass, osc_vis, wc_vis)
                     end
 
                     local tx = hb and (hb.x1 + hb.x2) / 2 or (element.hitbox.x1 + element.hitbox.x2) / 2
-                    local seekbar_ref = (state.seekbar_element and state.seekbar_element.hitbox) and state.seekbar_element or element
+                    local seekbar_ref = element.tooltip_reference == "self" and element or ((state.seekbar_element and state.seekbar_element.hitbox) and state.seekbar_element or element)
                     local image_mode_offset = (seekbar_ref == element) and 10 or 0
                     local ty = seekbar_ref.hitbox.y1 - user_opts.tooltip_height_offset - image_mode_offset
 
@@ -2476,25 +2477,29 @@ layouts["comfortable"] = function ()
         lo.style = string.format("%s{\\clip(%f,%f,%f,%f)}", osc_styles.title, 0, 0, osc_w * 0.35 + 20, ref_y)
     end
 
-    -- Put the volume button and slider before the fullscreen button at right.
+    -- Put volume controls in the middle of the right half, with a live value.
     local show_volume = state.audio_track_count > 0
         and user_opts.volume_control
         and osc_w >= user_opts.hide_volume_bar_trigger
     elements["vol_ctrl"].visible = show_volume
     elements["volumebar"].visible = show_volume
+    elements["volume_value"].visible = show_volume
 
     if show_volume then
         local volume_bar_w = 70
         local volume_gap = 10
+        local volume_value_w = 32
         local volume_y = ref_y - (user_opts.osc_height / 2)
-        local fullscreen_center_x = osc_w - 37
-        local volume_right = fullscreen_center_x - 24
-        local volume_bar_x = volume_right - volume_bar_w
-        local volume_button_x = volume_bar_x - volume_gap - 12
+        local volume_group_w = 24 + volume_gap + volume_bar_w + volume_gap + volume_value_w
+        local volume_group_x = osc_w * 0.75 - volume_group_w / 2
+        local volume_button_x = volume_group_x + 12
+        local volume_bar_x = volume_group_x + 24 + volume_gap
+        local volume_value_x = volume_bar_x + volume_bar_w + volume_gap
 
         lo = add_layout("vol_ctrl")
         lo.geometry = {x = volume_button_x, y = volume_y, an = 5, w = 24, h = 24}
         lo.style = osc_styles.control_3
+        elements["vol_ctrl"].no_hover_box = true
 
         lo = add_layout("volumebarbg")
         lo.geometry = {x = volume_bar_x, y = volume_y, an = 4, w = volume_bar_w, h = 4}
@@ -2510,7 +2515,13 @@ layouts["comfortable"] = function ()
         lo.slider.gap = 3
         lo.slider.radius = user_opts.slider_rounded_corners and 2 or 0
         lo.slider.tooltip_an = 2
-        elements["vol_ctrl"].hover_box = {x1 = volume_button_x - 12, y1 = volume_y - 12, x2 = volume_right, y2 = volume_y + 12}
+
+        lo = add_layout("volume_value")
+        lo.geometry = {x = volume_value_x, y = volume_y, an = 4, w = volume_value_w, h = user_opts.time_font_size}
+        lo.layer = 48
+        lo.alpha[3] = 0
+        lo.style = osc_styles.time
+        elements["vol_ctrl"].hover_box = {x1 = volume_group_x, y1 = volume_y - 12, x2 = volume_value_x + volume_value_w, y2 = volume_y + 12}
     else
         elements["vol_ctrl"].hover_box = nil
     end
@@ -3395,13 +3406,29 @@ local function osc_init()
         local volume = state.volume
         return state.mute and icons.volume_mute or (volume >= 75 and icons.volume_high) or (volume >= 25 and icons.volume_low) or icons.volume_quiet
     end
+    ne.tooltip_reference = "self"
     ne.tooltipF = function ()
-        local volume = state.volume
-        -- show only one decimal, if decimals exist
-        local volume_str = (volume % 1 == 0) and string.format("%.0f", volume) or string.format("%.1f", volume)
-        return locale.volume .. ": " .. volume_str .. (state.mute and " (" .. locale.muted .. ")" or "")
+        local volume = state.volume or 0
+        return volume % 1 == 0 and string.format("%.0f", volume) or string.format("%.1f", volume)
     end
     bind_buttons("vol_ctrl")
+    ne.eventresponder["mbtn_left_up"] = function ()
+        local volume = mp.get_property_number("volume", 0)
+        if volume > 0 then
+            state.last_nonzero_volume = volume
+            mp.commandv("set", "volume", 0)
+        else
+            mp.commandv("set", "volume", state.last_nonzero_volume or 100)
+        end
+    end
+
+    -- Volume value displayed beside the volume slider in the comfortable layout.
+    ne = new_element("volume_value", "button")
+    ne.styledown = false
+    ne.content = function()
+        local volume = state.volume or 0
+        return volume % 1 == 0 and string.format("%.0f", volume) or string.format("%.1f", volume)
+    end
 
     --volumebar
     local volume_max_prop = mp.get_property_number("volume-max") or 0
