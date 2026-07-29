@@ -1670,7 +1670,8 @@ local function render_elements(master_ass, osc_vis, wc_vis)
                         local ty
                         if an == 2 then
                             local seekbar = state.seekbar_element
-                            local ref_el = (element.name == "volumebar" and seekbar and seekbar.hitbox) and seekbar or element
+                            local ref_el = (element.tooltip_reference == "self" and element)
+                                or ((element.name == "volumebar" and seekbar and seekbar.hitbox) and seekbar or element)
                             local image_mode_offset = (ref_el == element) and 10 or 0
                             local anchor_offset = (ref_el == element) and (elem_geo.h / 2) or 0
                             ty = ref_el.hitbox.y1 + anchor_offset - user_opts.tooltip_height_offset - image_mode_offset
@@ -3406,11 +3407,8 @@ local function osc_init()
         local volume = state.volume
         return state.mute and icons.volume_mute or (volume >= 75 and icons.volume_high) or (volume >= 25 and icons.volume_low) or icons.volume_quiet
     end
-    ne.tooltip_reference = "self"
-    ne.tooltipF = function ()
-        local volume = state.volume or 0
-        return volume % 1 == 0 and string.format("%.0f", volume) or string.format("%.1f", volume)
-    end
+    ne.tooltipF = nil
+    ne.tooltip_reference = nil
     bind_buttons("vol_ctrl")
     ne.eventresponder["mbtn_left_up"] = function ()
         local volume = mp.get_property_number("volume", 0)
@@ -3438,6 +3436,10 @@ local function osc_init()
     ne.slider = {min = {value = 0}, max = {value = volume_max}}
     ne.slider.markerF = function () return {} end
     ne.slider.seekRangesF = function() return nil end
+    ne.tooltip_reference = "self"
+    ne.slider.tooltipF = function (pos)
+        return string.format("%d", set_volume(pos))
+    end
     ne.slider.posF = function ()
         if user_opts.volume_control_type ~= "logarithmic" then return state.volume end
         return state.volume and math.sqrt(state.volume * 100) or 0
