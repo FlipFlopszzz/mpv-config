@@ -2478,10 +2478,23 @@ layouts["comfortable"] = function ()
         lo.style = string.format("%s{\\clip(%f,%f,%f,%f)}", osc_styles.title, 0, 0, osc_w * 0.35 + 20, ref_y)
     end
 
+    -- Playback-speed control between the actual title edge and the previous 5-second jump.
+    local title_text_w = estimate_text_width(elements["title"].content(), osc_styles.title)
+    local title_right_x = 20 + math.min(title_text_w, osc_w * 0.35)
+    local jump_back_x = osc_w / 2 - 60
+    elements["comfortable_speed"].visible = osc_w >= 300
+    if elements["comfortable_speed"].visible then
+        lo = add_layout("comfortable_speed")
+        lo.geometry = {x = (title_right_x + jump_back_x) / 2, y = ref_y - (user_opts.osc_height / 2), an = 5, w = 44, h = 24}
+        lo.layer = 48
+        lo.alpha[3] = 0
+        lo.style = osc_styles.time
+    end
+
     -- Put volume controls in the middle of the right half, with a live value.
     local show_volume = state.audio_track_count > 0
         and user_opts.volume_control
-        and osc_w >= user_opts.hide_volume_bar_trigger
+        and osc_w >= 300
     elements["vol_ctrl"].visible = show_volume
     elements["volumebar"].visible = show_volume
     elements["volume_value"].visible = show_volume
@@ -3555,6 +3568,33 @@ local function osc_init()
         mp.commandv("show-text", state.shuffled and locale.unshuffle or locale.shuffle, "-1", "1")
         state.shuffled = not state.shuffled
         mp.command("playlist-" .. (state.shuffled and "shuffle" or "unshuffle"))
+    end
+
+    -- Comfortable-layout speed button.
+    ne = new_element("comfortable_speed", "button")
+    ne.styledown = false
+    ne.content = function()
+        local speed = state.speed or 1
+        local value = speed % 1 == 0 and string.format("%.0f", speed) or string.format("%g", speed)
+        return value .. "x"
+    end
+    ne.eventresponder["mbtn_left_up"] = function()
+        local steps = {0.5, 0.75, 1, 1.5, 2, 3}
+        local speed = mp.get_property_number("speed", 1)
+        local next_speed = steps[1]
+        for i, step in ipairs(steps) do
+            if math.abs(speed - step) < 0.001 then
+                next_speed = steps[i % #steps + 1]
+                break
+            elseif speed < step then
+                next_speed = step
+                break
+            end
+        end
+        mp.commandv("set", "speed", next_speed)
+    end
+    ne.eventresponder["mbtn_right_up"] = function()
+        mp.commandv("set", "speed", 1)
     end
 
     --speed
