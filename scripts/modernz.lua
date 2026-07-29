@@ -2467,6 +2467,15 @@ layouts["comfortable"] = function ()
     lo.alpha[3] = 0
     lo.style = osc_styles.time
 
+    -- Keep the media title at the lower-left edge of the controller.
+    if elements["title"].visible then
+        lo = add_layout("title")
+        lo.geometry = {x = 20, y = ref_y - 18, an = 1, w = math.max(0, osc_w * 0.35), h = user_opts.title_font_size}
+        lo.layer = 48
+        lo.alpha[3] = 0
+        lo.style = string.format("%s{\\clip(%f,%f,%f,%f)}", osc_styles.title, 0, 0, osc_w * 0.35 + 20, ref_y)
+    end
+
     -- Put the volume button and slider before the fullscreen button at right.
     local show_volume = state.audio_track_count > 0
         and user_opts.volume_control
