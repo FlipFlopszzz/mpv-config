@@ -2415,6 +2415,98 @@ layouts["default"] = function ()
     end
 end
 
+-- Comfortable layout: inherit the standard default layout, then only replace
+-- the timeline timecodes and volume-control positions. Keeping the shared
+-- layout code avoids maintenance drift when the default layout changes.
+layouts["comfortable"] = function ()
+    layouts["default"]()
+
+    local osc_w = osc_param.playresx
+    local ref_y = osc_param.playresy
+    -- 仅为时间文本保留最小空间，避免压缩时间轴。
+    local time_side_w = (state.duration or 0) >= 3600 and 64 or 44
+    local seekbar_left = 20 + time_side_w + 4
+    local seekbar_right = osc_w - 20 - time_side_w - 4
+    local seekbar_w = seekbar_right - seekbar_left
+    local seekbar_x = (seekbar_left + seekbar_right) / 2
+    local seekbar_y = ref_y - user_opts.osc_height
+    local seekbar_bg_h = seekbar_height_style.height
+    local seekbar_h = 18
+    local lo
+
+    -- Put current time and duration on the two sides of the timeline.
+    lo = add_layout("seekbarbg")
+    lo.geometry = {x = seekbar_x, y = seekbar_y, an = 5, w = seekbar_w, h = seekbar_bg_h}
+    lo.layer = 15
+    lo.style = osc_styles.seekbar_bg
+    lo.box.radius = user_opts.slider_rounded_corners and seekbar_height_style.radius or 0
+    lo.alpha[1] = 128
+
+    lo = add_layout("seekbar")
+    lo.geometry = {x = seekbar_x, y = seekbar_y, an = 5, w = seekbar_w, h = seekbar_h}
+    lo.layer = 49
+    lo.style = osc_styles.seekbar_fg
+    lo.slider.handle_color = user_opts.seek_handle_color
+    lo.slider.handle_border = user_opts.seek_handle_border_color
+    lo.slider.gap = (seekbar_h - seekbar_bg_h) / 2.0
+    lo.slider.radius = user_opts.slider_rounded_corners and seekbar_height_style.radius or 0
+    lo.slider.tooltip_an = 2
+
+    elements["time_codes"].visible = false
+    elements["time_left"].visible = (state.duration or 0) > 0
+    lo = add_layout("time_left")
+    lo.geometry = {x = 25, y = seekbar_y, an = 4, w = time_side_w, h = user_opts.time_font_size}
+    lo.layer = 48
+    lo.alpha[3] = 0
+    lo.style = osc_styles.time
+
+    elements["time_right"].visible = (state.duration or 0) > 0
+    lo = add_layout("time_right")
+    lo.geometry = {x = osc_w - 25, y = seekbar_y, an = 6, w = time_side_w, h = user_opts.time_font_size}
+    lo.layer = 48
+    lo.alpha[3] = 0
+    lo.style = osc_styles.time
+
+    -- Put the volume button and slider before the fullscreen button at right.
+    local show_volume = state.audio_track_count > 0
+        and user_opts.volume_control
+        and osc_w >= user_opts.hide_volume_bar_trigger
+    elements["vol_ctrl"].visible = show_volume
+    elements["volumebar"].visible = show_volume
+
+    if show_volume then
+        local volume_bar_w = 70
+        local volume_gap = 10
+        local volume_y = ref_y - (user_opts.osc_height / 2)
+        local fullscreen_center_x = osc_w - 37
+        local volume_right = fullscreen_center_x - 24
+        local volume_bar_x = volume_right - volume_bar_w
+        local volume_button_x = volume_bar_x - volume_gap - 12
+
+        lo = add_layout("vol_ctrl")
+        lo.geometry = {x = volume_button_x, y = volume_y, an = 5, w = 24, h = 24}
+        lo.style = osc_styles.control_3
+
+        lo = add_layout("volumebarbg")
+        lo.geometry = {x = volume_bar_x, y = volume_y, an = 4, w = volume_bar_w, h = 4}
+        lo.layer = 15
+        lo.alpha[1] = 128
+        lo.style = user_opts.volumebar_match_seek_color and osc_styles.seekbar_bg or osc_styles.volumebar_bg
+        lo.box.radius = user_opts.slider_rounded_corners and 2 or 0
+
+        lo = add_layout("volumebar")
+        lo.geometry = {x = volume_bar_x, y = volume_y, an = 4, w = volume_bar_w, h = 10}
+        lo.style = user_opts.volumebar_match_seek_color and osc_styles.seekbar_fg or osc_styles.volumebar_fg
+        lo.slider.handle_color = user_opts.volumebar_match_seek_color and user_opts.seekbarfg_color or user_opts.side_buttons_color
+        lo.slider.gap = 3
+        lo.slider.radius = user_opts.slider_rounded_corners and 2 or 0
+        lo.slider.tooltip_an = 2
+        elements["vol_ctrl"].hover_box = {x1 = volume_button_x - 12, y1 = volume_y - 12, x2 = volume_right, y2 = volume_y + 12}
+    else
+        elements["vol_ctrl"].hover_box = nil
+    end
+end
+
 layouts["compact"] = function ()
     local chapter_index = (state.chapter or -1) >= 0
     local no_title = not user_opts.show_title
@@ -3593,6 +3685,19 @@ local function osc_init()
     end
 
     -- Time codes display
+    ne = new_element("time_left", "button")
+    ne.styledown = false
+    ne.content = function()
+        if not state.duration then return "--:--" end
+        return format_time(mp.get_property_number("playback-time", 0))
+    end
+
+    ne = new_element("time_right", "button")
+    ne.styledown = false
+    ne.content = function()
+        return state.duration and format_time(state.duration) or "--:--"
+    end
+
     ne = new_element("time_codes", "button")
     ne.content = function()
         local playback_time = mp.get_property_number("playback-time", 0)
